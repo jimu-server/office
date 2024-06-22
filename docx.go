@@ -6,7 +6,6 @@ import (
 	"encoding/xml"
 	"github.com/beevik/etree"
 	"io"
-	"os"
 	"strings"
 )
 
@@ -24,12 +23,9 @@ type Docx struct {
 	Body    XMLBody  `xml:"body"`
 }
 
-func DocxToString(docx *os.File) (string, error) {
-	stat, err := docx.Stat()
-	if err != nil {
-		return "", err
-	}
-	reader, err := zip.NewReader(docx, stat.Size())
+func DocxToString(docx []byte) (string, error) {
+	newBuffer := bytes.NewReader(docx)
+	reader, err := zip.NewReader(newBuffer, int64(len(docx)))
 	if err != nil {
 		return "", err
 	}
@@ -49,13 +45,11 @@ func DocxToString(docx *os.File) (string, error) {
 			break
 		}
 	}
-
 	document := etree.NewDocument()
 	if err = document.ReadFromBytes(buffer.Bytes()); err != nil {
 		return "", err
 	}
 	root := document.Root()
-
 	return getText(root), nil
 }
 
@@ -65,19 +59,15 @@ func getText(element *etree.Element) string {
 		return ""
 	}
 	for _, e := range element.ChildElements() {
-		if text := e.Text(); text != "" {
-			text = strings.ReplaceAll(text, " ", "")
-			text = strings.ReplaceAll(text, "\n", "")
-			text = strings.ReplaceAll(text, "\t", "")
-			if text != "" {
+		if e.Tag == "br" {
+			sum.WriteString("\n")
+		} else if e.Tag == "p" {
+			sum.WriteString("\n")
+		} else {
+			if text := e.Text(); text != "" {
 				sum.WriteString(text)
 			}
-		}
-		if value := getText(e); value != "" {
-			value = strings.ReplaceAll(value, " ", "")
-			value = strings.ReplaceAll(value, "\n", "")
-			value = strings.ReplaceAll(value, "\t", "")
-			if value != "" {
+			if value := getText(e); value != "" {
 				sum.WriteString(value)
 			}
 		}
@@ -124,16 +114,52 @@ func getTextArray(element *etree.Element) []string {
 	}
 	for _, e := range element.ChildElements() {
 		if text := e.Text(); text != "" {
-			text = strings.ReplaceAll(text, " ", "")
-			text = strings.ReplaceAll(text, "\n", "")
-			text = strings.ReplaceAll(text, "\t", "")
-			if text != "" {
-				arr = append(arr, text)
-			}
+			//text = strings.ReplaceAll(text, " ", "")
+			//text = strings.ReplaceAll(text, "\n", "")
+			//text = strings.ReplaceAll(text, "\t", "")
+			//if text != "" {
+			//	arr = append(arr, text)
+			//}
+			arr = append(arr, text)
 		}
 		if value := getTextArray(e); len(value) != 0 {
 			arr = append(arr, value...)
 		}
 	}
 	return arr
+}
+
+func WordSplitter(text string, maxLength int) []string {
+	var chunks []string
+	words := strings.FieldsFunc(text, func(r rune) bool {
+		return r == '!' || r == '?' || r == ';' || r == '。'
+	})
+	var currentChunk []string
+	currentLength := 0
+
+	/*for _, word := range words {
+		if currentLength+len(word)+1 > maxLength {
+			chunks = append(chunks, strings.Join(currentChunk, " "))
+			currentChunk = []string{word}
+			currentLength = len(word)
+		} else {
+			currentChunk = append(currentChunk, word)
+			currentLength += len(word) + 1
+		}
+	}*/
+
+	for _, word := range words {
+		if currentLength <= maxLength-1 {
+			currentChunk = append(currentChunk, word)
+			currentLength += 1
+		} else {
+			currentLength = 0
+			chunks = append(chunks, strings.Join(currentChunk, ""))
+			currentChunk = nil
+		}
+	}
+	if len(currentChunk) > 0 {
+		chunks = append(chunks, strings.Join(currentChunk, ""))
+	}
+	return chunks
 }
